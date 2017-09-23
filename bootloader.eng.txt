@@ -1,0 +1,80 @@
+ARM startup process is as follows:
+
+BootRom ---> preloader -----> lk -----> kernel
+In the case of
+BootRom starts
+
+1, through the RESET mode to start the ARM core
+2, initialize the external SRAM
+3, initialize the external NAND / EMMC
+4, the preloader removed from the NAND / EMMC into the SRAM
+5, jump implementation of the preloader
+
+Preloader
+
+1, the establishment of c implementation environment
+2, initialize some external hardware (Timer, clock, UART, external DRAM)
+3, safety certification (MTK own certification)
+4, jump execution lk
+
+2.1 into the preloader to establish c environment
+
+Bootable \ bootloader \ preloader \ platform \ mt6735 \ link_descriptor.ld
+In the case of
+ENTRY (_start) // ld Link the file to link the file to be executed
+
+Bootable \ bootloader \ preloader \ platform \ mt6735 \ src \ init \ init.s
+
+.globl _start // assembly language
+_start:
+    b resethandler
+...
+resethandler: // build the c execution environment
+    LDR r6, = bldr_args_addr
+    STR r4, [r6]
+    ...
+entry:
+    LDR r0, = bldr_args_addr
+    B main // Jump to perform main operation
+
+2.2 into the c environment, do basic initialization
+
+Bootable \ bootloader \ preloader \ platform \ mt6735 \ src \ core \ main.c
+
+1, get bootloader information
+/ * get the bldr argument * /
+bldr_param = (bl_param_t *) * arg;
+    
+2, UART initialization
+mtk_uart_init (UART_SRC_CLK_FRQ, CFG_LOG_BAUDRATE); // crystal clock frequency, UART baud rate (typically 921600)
+// Print MTK serial port need to set the baud rate to 921600
+
+3, initialize Timer, clock, watchdog,
+bldr_pre_process ();
+bldr_wait_forever ();
+
+4, mode detection
+bldr_handshake (& handler); // detection mode, NORMAL_BOOT, FACTORY_BOOT, etc.
+In the case of
+5, trustzone initialization (if there is this hardware)
+#if CFG_ATF_SUPPORT
+trustzone_pre_init ();
+#endif
+
+6, import lk to DRAM
+bldr_load_images (& jump_addr);
+
+7, from the preloader to lk pass parameters
+bldr_post_process ();
+
+8, jump execution lk
+bldr_jump64 (jump_addr, (u32) & bootarg, sizeof (boot_arg_t));
+In the case of
+Three. Lk
+
+1, get the parameters from the preloader
+2, enable MMU cache
+3, enable peripherals
+4, set the Boot mode
+5, import kernel to DRAM
+6, jump to the kernel implementation
